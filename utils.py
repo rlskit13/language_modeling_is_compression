@@ -15,7 +15,7 @@
 
 """Utility functions."""
 
-import chex
+import torch
 import numpy as np
 
 
@@ -82,7 +82,7 @@ def zero_most_significant_bit_if_not_ascii_decodable(
   return bytes(masked_data), masked_bits
 
 
-def normalize_pdf_for_arithmetic_coding(pdf: chex.Array) -> chex.Array:
+def normalize_pdf_for_arithmetic_coding(pdf: torch.Tensor) -> torch.Tensor:
   """Normalizes the probabilities for arithmetic coding.
 
   Arithmetic coding converts the floating-point pdf to integers to avoid
@@ -96,9 +96,9 @@ def normalize_pdf_for_arithmetic_coding(pdf: chex.Array) -> chex.Array:
   Returns:
     The normalized probabilities.
   """
-  machine_epsilon = np.finfo(np.float32).eps
+  machine_epsilon = torch.finfo(torch.float32).eps
   # Normalize the probabilities to avoid floating-point errors.
-  pdf = pdf / np.cumsum(pdf)[-1]
+  pdf = pdf / torch.cumsum(pdf, dim=-1)[-1]
   # Ensure all probabilities are sufficiently large to yield distinct cdfs.
   pdf = (1 - 2 * pdf.shape[0] * machine_epsilon) * pdf + machine_epsilon
   return pdf

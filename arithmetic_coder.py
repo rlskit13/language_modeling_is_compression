@@ -17,7 +17,7 @@
 
 from typing import Any, Callable
 
-import chex
+import torch
 import numpy as np
 
 InputFn = Callable[[], int]
@@ -69,8 +69,10 @@ class _CoderBase:
       io_fn: Function to write digits to compressed stream/read digits from
         compressed stream.
     """
-    chex.assert_scalar_in(base, 2, np.inf)
-    chex.assert_scalar_in(precision, 2, np.inf)
+    if not (2 <= base < float('inf')):
+      raise ValueError("base must be in the range [2, inf).")
+    if not (2 <= precision < float('inf')):
+      raise ValueError("precision must be in the range [2, inf).")
 
     self._base: int = base
     self._base_to_pm1: int = int(base ** (precision - 1))
@@ -94,7 +96,7 @@ class _CoderBase:
     if self._base > 16:
       raise ValueError("`__str__` with `base` exceeding 16 not implmeneted.")
 
-    p = 1 + _log_power_of_b(self._base_to_pm1, base=self._base)
+    p = 1 + self._log_power_of_b(self._base_to_pm1, base=self._base)
 
     def _to_str(x: int) -> str:
       """Returns representation of `n` in base `self._base`."""
@@ -107,7 +109,15 @@ class _CoderBase:
         f"[{_to_str(self._low)}, {_to_str(self._high)})  {_to_str(self._code)}"
     )
 
-  def _get_intervals(self, pdf: np.ndarray) -> np.ndarray:
+  def _log_power_of_b(self, val: int, base: int) -> int:
+        """Helper function to compute logarithm to the base."""
+        result = 0
+        while val >= base:
+            val //= base
+            result += 1
+        return result
+
+  def _get_intervals(self, pdf: torch.Tensor) -> torch.Tensor:
     """Partition the current AC interval according to the distribution `pdf`."""
     if (pdf < 0).any():
       raise ValueError(
@@ -120,7 +130,7 @@ class _CoderBase:
     # into the current AC range `high - low + 1` and quantise, this yields the
     # quantised CPDF `qcpdf`.
     width = self._high - self._low + 1
-    qcpdf = (np.insert(pdf, 0, 0).cumsum() * width).astype(int)
+    qcpdf = (torch.cat([torch.tensor([0]), pdf]).cumsum(dim=0) * width).int()
     if (qcpdf[1:] == qcpdf[:-1]).any():
       raise ValueError(
           "Some probabilities are 0 after quantisation. Please make sure that:"
@@ -212,7 +222,7 @@ class _CoderBase:
       self._low = _shift_left_keeping_msd(self._low)
       self._high = _shift_left_keeping_msd(self._high) + self._base - 1
 
-  def _process(self, pdf: np.ndarray, symbol: int | None) -> int:
+  def _process(self, pdf: torch.tensor, symbol: int | None) -> int:
     """Perform an AC encoding or decoding step and modify AC state in-place.
 
     Args:
@@ -228,10 +238,10 @@ class _CoderBase:
     encoding = symbol is not None
     intervals = self._get_intervals(pdf)
     if not encoding:
-      symbol = np.searchsorted(intervals, self._code, side="right") - 1
-    assert 0 <= symbol < pdf.size
+      symbol = torch.searchsorted(intervals, self._code, right=True).item() - 1
+    assert 0 <= symbol < pdf.size(0)
     low_pre_split = self._low
-    self._low, self._high = intervals[[symbol, symbol + 1]]
+    self._low, self._high = intervals[[symbol.item(), symbol.item() + 1]]
     # Due to integer arithmetics the integer representation of [low, high) has
     # an inclusive upper bound, so decrease high.
     self._high -= 1
@@ -261,7 +271,7 @@ class _CoderBase:
 class Encoder(_CoderBase):
   """Arithmetic encoder."""
 
-  def __init__(self, base: int, precision: int, output_fn: OutputFn):
+  def __init__(self, base: int, precision: int, output_fn):
     """Constructs arithmetic encoder.
 
     Args:
@@ -274,7 +284,7 @@ class Encoder(_CoderBase):
     """
     super().__init__(base, precision, output_fn)
 
-  def encode(self, pdf: np.ndarray, symbol: int) -> None:
+  def encode(self, pdf: torch.Tensor, symbol: int) -> None:
     """Encodes symbol `symbol` assuming coding distribution `pdf`."""
     self._process(pdf, symbol)
 
@@ -285,14 +295,16 @@ class Encoder(_CoderBase):
     self._io_fn(self._low // self._base_to_pm1)
     for _ in range(self._num_carry_digits):
       self._io_fn(self._base - 1)
-    self.encode = _raise_post_terminate_exception
-    self.terminate = _raise_post_terminate_exception
+    self.encode = self._raise_post_terminate_exception
+    self.terminate = self._raise_post_terminate_exception
 
+  def _raise_post_terminate_exception(self, *args, **kwargs):
+    raise RuntimeError("Cannot encode or terminate after termination.")
 
 class Decoder(_CoderBase):
   """Arithmetic decoder."""
 
-  def __init__(self, base: int, precision: int, input_fn: InputFn):
+  def __init__(self, base: int, precision: int, input_fn):
     """Constructs arithmetic decoder.
 
     Args:
@@ -313,12 +325,13 @@ class Decoder(_CoderBase):
       digit = input_fn()
       if digit is None:
         digit = next(trailing_digits)
-      chex.assert_scalar_in(int(digit), 0, base - 1)
-      return digit
+      if not (0 <= int(digit) < base):
+        raise ValueError(f"Digit out of range: {digit}")
+      return int(digit)
 
     super().__init__(base, precision, _padded_input_fn)
     for _ in range(precision):
       self._code = self._code * base + _padded_input_fn()
 
-  def decode(self, pdf: np.ndarray) -> int:
+  def decode(self, pdf: torch.Tensor) -> int:
     return self._process(pdf, None)

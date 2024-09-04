@@ -57,8 +57,9 @@ To that end, install [Anaconda](https://www.anaconda.com/download#downloads).
 Then, run the following commands:
 
 ```bash
-# Clone the source code into a local directory:
+# Clone the source code into a local directory (branch to "pytorch_implementation" for pytorch version):
 git clone https://github.com/google-deepmind/language_modeling_is_compression.git
+git checkout -b pytorch_implementation
 cd language_modeling_is_compression
 
 # Create and activate the conda environment:
@@ -70,6 +71,7 @@ conda install pip
 pip install -r requirements.txt
 ```
 
+## Ignore this for PyTorch version!!
 If you have a GPU available (highly recommended for fast training), then you can install JAX with CUDA support.
 ```bash
 pip install --upgrade "jax[cuda12_pip]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
@@ -95,6 +97,57 @@ To evaluate the compression rates, use:
 ```bash
 python compress.py
 ```
+## Notes ##
+To run compress.py using language model (either local trained model or HuggingFace model), go to /compresors/compressor.py, 
+line 36 Change "'arithmetic_coding': ['classical']," to 'arithmetic_coding': ['language_model'],
+
+## To run HuggingFace model ##
+The compress and decompress function has been modified to support loading of HuggingFace model. To use that function, 
+go to /compresors/compressor.py, line 42, Change 'language_model': language_model.compress to 'language_model': language_model.compress_pretrained. Maintaining 'language_model': language_model.compress will run the model that is being trained using train.py.
+
+To change the HuggingFace model, go to /compressors/language_model.py, line 34, and change the variable "model_name" to the desired model. Below are some of the models:
+
+1. Text Classification
+•	BERT: bert-base-uncased
+•	RoBERTa: roberta-base
+•	DistilBERT: distilbert-base-uncased
+•	XLNet: xlnet-base-cased
+2. Question Answering
+•	BERT for QA: bert-large-uncased-whole-word-masking-finetuned-squad
+•	RoBERTa for QA: deepset/roberta-base-squad2
+•	ALBERT for QA: twmkn9/albert-base-v2-squad2
+3. Text Generation
+•	GPT-2: gpt2
+•	GPT-Neo: EleutherAI/gpt-neo-2.7B
+•	T5: t5-base
+•	BART: facebook/bart-large
+4. Text Summarization
+•	BART for Summarization: facebook/bart-large-cnn
+•	Pegasus: google/pegasus-xsum
+•	T5 for Summarization: t5-small
+5. Translation
+•	MarianMT: Helsinki-NLP/opus-mt-en-de (English to German)
+•	mBART: facebook/mbart-large-50-many-to-one-mmt
+6. Sentence Embeddings
+•	Sentence-BERT: sentence-transformers/all-MiniLM-L6-v2
+•	RoBERTa for Embeddings: sentence-transformers/roberta-large-nli-stsb-mean-tokens
+7. Named Entity Recognition (NER)
+•	BERT for NER: dbmdz/bert-large-cased-finetuned-conll03-english
+•	Flair: flair/ner-english
+8. Multimodal (Text + Image)
+•	CLIP: openai/clip-vit-base-patch32
+•	BLIP: Salesforce/blip-image-captioning-base
+9. Large Language Models
+•	GPT-3 (via OpenAI API)
+•	LLaMA: meta-llama/LLaMA-2-7b-hf
+•	Falcon: tiiuae/falcon-7b
+10. Other Specialized Models
+•	Stable Diffusion (Text-to-Image): CompVis/stable-diffusion-v1-4
+•	Whisper (Speech-to-Text): openai/whisper-large
+•	CodeBERT (Code Understanding): microsoft/codebert-base
+
+
+Do take note that you will need to change the input size, embedding size or other parameters for different models to work.
 
 
 ## Citing This Work
